@@ -1,4 +1,4 @@
-import { signUp } from "@/app/auth/actions";
+import { signUp, signInWithGoogle } from "@/app/auth/actions";
 
 export default async function SignUpPage({
   searchParams,
@@ -35,6 +35,12 @@ export default async function SignUpPage({
           <input name="password" type="password" required minLength={6} style={{ width: "100%" }} />
         </label>
         <button type="submit">Create account</button>
+      </form>
+
+      
+      <p style={{ margin: "1rem 0" }}>— or —</p>
+      <form action={signInWithGoogle}>
+        <button type="submit">Continue with Google</button>
       </form>
 
       <p>

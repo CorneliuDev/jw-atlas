@@ -1,4 +1,4 @@
-import { login } from "@/app/auth/actions";
+import { login, signInWithGoogle } from "@/app/auth/actions";
 
 export default async function LoginPage({
   searchParams,
@@ -25,6 +25,12 @@ export default async function LoginPage({
           <input name="password" type="password" required style={{ width: "100%" }} />
         </label>
         <button type="submit">Log in</button>
+      </form>
+
+      
+      <p style={{ margin: "1rem 0" }}>— or —</p>
+      <form action={signInWithGoogle}>
+        <button type="submit">Continue with Google</button>
       </form>
 
       <p>

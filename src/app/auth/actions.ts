@@ -48,3 +48,24 @@ export async function logout() {
   await supabase.auth.signOut();
   redirect("/login");
 }
+
+export async function signInWithGoogle() {
+  const supabase = await createSupabaseServerClient();
+
+  const { data, error } = await supabase.auth.signInWithOAuth({
+    provider: "google",
+    options: {
+      // Sends the user back to our own callback route after Google + Supabase
+      // finish the handshake, so we can exchange the code for a session.
+      redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL}/auth/callback`,
+    },
+  });
+
+  if (error) {
+    redirect(`/login?error=${encodeURIComponent(error.message)}`);
+  }
+
+  if (data.url) {
+    redirect(data.url);
+  }
+}
