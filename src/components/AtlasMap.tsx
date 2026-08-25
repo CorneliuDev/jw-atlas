@@ -31,6 +31,8 @@ export default function AtlasMap() {
   const [notesLoading, setNotesLoading] = useState(true);
   const [selectedNoteId, setSelectedNoteId] = useState<string | null>(null);
 
+  const [territoryYear, setTerritoryYear] = useState<number>(-1000);
+
   function highlightMarker(placeId: string | null) {
     markersRef.current.forEach((marker, id) => {
       const el = marker.getElement();
@@ -94,9 +96,19 @@ export default function AtlasMap() {
     setNotesLoading(false);
   }
 
+  async function loadTerritories(year: number) {
+    if (!mapRef.current) return;
+    const res = await fetch(`/api/v1/territories?year=${year}`);
+    const geojson = await res.json();
+
+    const source = mapRef.current.getSource("territories") as maplibregl.GeoJSONSource | undefined;
+    if (source) {
+      source.setData(geojson);
+    }
+  }
+
   function handleSelectNote(note: TimelineNote) {
     setSelectedNoteId(note.id);
-
     if (note.places && mapRef.current) {
       mapRef.current.flyTo({
         center: [note.places.longitude, note.places.latitude],
@@ -145,13 +157,35 @@ export default function AtlasMap() {
     mapRef.current.addControl(new maplibregl.NavigationControl(), "top-right");
 
     mapRef.current.on("click", (e) => {
+      const features = mapRef.current!.getLayer("territories-fill")
+        ? mapRef.current!.queryRenderedFeatures(e.point, { layers: ["territories-fill"] })
+        : [];
+      if (features.length > 0) return;
       setSelectedPlace(null);
       setClickedCoords({ lat: e.lngLat.lat, lng: e.lngLat.lng });
     });
 
     mapRef.current.on("load", () => {
+      mapRef.current!.addSource("territories", {
+        type: "geojson",
+        data: { type: "FeatureCollection", features: [] },
+      });
+      mapRef.current!.addLayer({
+        id: "territories-fill",
+        type: "fill",
+        source: "territories",
+        paint: { "fill-color": "#8B5E34", "fill-opacity": 0.25 },
+      });
+      mapRef.current!.addLayer({
+        id: "territories-outline",
+        type: "line",
+        source: "territories",
+        paint: { "line-color": "#8B5E34", "line-width": 1.5 },
+      });
+
       loadPlaces();
       loadNotes();
+      loadTerritories(territoryYear);
     });
 
     return () => {
@@ -161,6 +195,12 @@ export default function AtlasMap() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  useEffect(() => {
+    if (mapRef.current?.isStyleLoaded() && mapRef.current?.getSource("territories")) {
+      loadTerritories(territoryYear);
+    }
+  }, [territoryYear]);
+
   const addPlaceHref = clickedCoords
     ? "/places/new?lat=" + clickedCoords.lat + "&lng=" + clickedCoords.lng
     : "";
@@ -169,6 +209,31 @@ export default function AtlasMap() {
   return (
     <div style={{ position: "relative", width: "100%", height: "100vh" }}>
       <div ref={mapContainerRef} style={{ width: "100%", height: "100%" }} />
+
+      <div
+        style={{
+          position: "absolute",
+          top: 12,
+          left: 12,
+          background: "white",
+          padding: "0.5rem 0.75rem",
+          borderRadius: 6,
+          boxShadow: "0 1px 4px rgba(0,0,0,0.15)",
+          fontFamily: "sans-serif",
+          fontSize: 13,
+        }}
+      >
+        <label>
+          Show territories active in year:{" "}
+          <input
+            type="number"
+            value={territoryYear}
+            onChange={(e) => setTerritoryYear(parseInt(e.target.value, 10) || 0)}
+            style={{ width: 80 }}
+          />
+          <span style={{ color: "#888" }}> (negative = BC)</span>
+        </label>
+      </div>
 
       <Timeline
         notes={notes}
