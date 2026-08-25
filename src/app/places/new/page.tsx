@@ -3,7 +3,7 @@ import { createPlace } from "@/app/places/actions";
 export default async function NewPlacePage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string; success?: string; status?: string }>;
+  searchParams: Promise<{ error?: string; success?: string; status?: string; lat?: string; lng?: string }>;
 }) {
   const params = await searchParams;
 
@@ -28,11 +28,11 @@ export default async function NewPlacePage({
         </label>
         <label>
           Latitude
-          <input name="latitude" type="number" step="any" required style={{ width: "100%" }} />
+          <input name="latitude" type="number" step="any" required defaultValue={params.lat} style={{ width: "100%" }} />
         </label>
         <label>
           Longitude
-          <input name="longitude" type="number" step="any" required style={{ width: "100%" }} />
+          <input name="longitude" type="number" step="any" required defaultValue={params.lng} style={{ width: "100%" }} />
         </label>
         <label>
           Description
@@ -48,6 +48,8 @@ export default async function NewPlacePage({
         </label>
         <button type="submit">Submit place</button>
       </form>
+
+      <p><a href="/">← Back to map</a></p>
     </main>
   );
 }
