@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import * as turf from "@turf/turf";
 import * as maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
@@ -24,6 +25,8 @@ interface Place {
 }
 
 export default function AtlasMap() {
+	const searchParams = useSearchParams();
+	const focusPlaceId = searchParams.get("focusPlace");
 	const mapContainerRef = useRef<HTMLDivElement>(null);
 	const mapRef = useRef<maplibregl.Map | null>(null);
 	const markersRef = useRef<Map<string, maplibregl.Marker>>(new Map());
@@ -119,6 +122,19 @@ export default function AtlasMap() {
 
 			markersRef.current.set(place.id, marker);
 		});
+
+		if (focusPlaceId) {
+			const focusPlace = places.find((p) => p.id === focusPlaceId);
+			if (focusPlace) {
+				mapRef.current?.flyTo({
+					center: [focusPlace.longitude, focusPlace.latitude],
+					zoom: 9,
+					duration: 1000,
+				});
+				setSelectedPlace(focusPlace);
+				highlightMarker(focusPlace.id);
+			}
+		}
 	}
 
 	async function loadNotes() {
@@ -1060,6 +1076,17 @@ export default function AtlasMap() {
 									Bookmark this place
 								</button>
 							</form>
+							<button
+								type="button"
+								onClick={() => {
+									const url = `${window.location.origin}/places/${selectedPlace.id}`;
+									navigator.clipboard.writeText(url);
+									alert("Link copied: " + url);
+								}}
+								style={{ marginTop: 4 }}
+							>
+								Copy share link
+							</button>
 						</div>
 					)}
 				</div>
