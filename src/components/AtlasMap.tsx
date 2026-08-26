@@ -1071,6 +1071,12 @@ export default function AtlasMap() {
 							</p>
 							{selectedPlace.description && <p>{selectedPlace.description}</p>}
 							<a href={addNoteHref}>Add a note to this place</a>
+							<a
+								href={`/places/${selectedPlace.id}`}
+								style={{ display: "block", marginTop: 4 }}
+							>
+								View full page
+							</a>
 							<br />
 							<form action={addPlaceBookmark.bind(null, selectedPlace.id)}>
 								<button type="submit" style={{ marginTop: 8 }}>
