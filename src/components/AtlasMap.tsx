@@ -6,6 +6,7 @@ import * as turf from "@turf/turf";
 import * as maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import Timeline, { TimelineNote } from "./Timeline";
+import EraBand from "./EraBand";
 import { addPlaceBookmark } from "@/app/bookmarks/actions";
 import { createTerritory } from "@/app/territories/actions";
 import { createRoute } from "@/app/routes/actions";
@@ -1006,6 +1007,7 @@ export default function AtlasMap() {
 				</div>
 			)}
 
+			<EraBand />
 			<Timeline
 				notes={notes}
 				loading={notesLoading}
