@@ -5,6 +5,7 @@ import * as turf from "@turf/turf";
 import * as maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import Timeline, { TimelineNote } from "./Timeline";
+import { addPlaceBookmark } from "@/app/bookmarks/actions";
 import { createTerritory } from "@/app/territories/actions";
 import { createRoute } from "@/app/routes/actions";
 
@@ -1053,6 +1054,12 @@ export default function AtlasMap() {
 							</p>
 							{selectedPlace.description && <p>{selectedPlace.description}</p>}
 							<a href={addNoteHref}>Add a note to this place</a>
+							<br />
+							<form action={addPlaceBookmark.bind(null, selectedPlace.id)}>
+								<button type="submit" style={{ marginTop: 8 }}>
+									Bookmark this place
+								</button>
+							</form>
 						</div>
 					)}
 				</div>
