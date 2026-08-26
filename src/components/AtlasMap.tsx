@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import * as turf from "@turf/turf";
 import * as maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import Timeline, { TimelineNote } from "./Timeline";
@@ -50,6 +51,9 @@ export default function AtlasMap() {
 	>([]);
 	const [showRouteForm, setShowRouteForm] = useState(false);
 	const [routeFormMessage, setRouteFormMessage] = useState<string | null>(null);
+	const [measureMode, setMeasureMode] = useState(false);
+	const [measurePoints, setMeasurePoints] = useState<[number, number][]>([]);
+	const [measureDistance, setMeasureDistance] = useState<string | null>(null);
 
 	function highlightMarker(placeId: string | null) {
 		markersRef.current.forEach((marker, id) => {
@@ -63,10 +67,10 @@ export default function AtlasMap() {
           const res = await fetch("/api/v1/places");
           const body = (await res.json()) as { places?: Place[]; error?: string };
           const places = body.places ?? [];
-            
+
           markersRef.current.forEach((m) => m.remove());
           markersRef.current = new Map();
-            
+
           places.forEach((place) => {
 			const el = document.createElement("div");
 			el.style.width = "16px";
@@ -243,6 +247,29 @@ export default function AtlasMap() {
 		source.setData({ type: "FeatureCollection", features });
 	}
 
+	function updateMeasurePreview(points: [number, number][]) {
+		const source = mapRef.current?.getSource("measure-preview") as
+			| maplibregl.GeoJSONSource
+			| undefined;
+		if (!source) return;
+
+		const features: GeoJSON.Feature[] = points.map((p) => ({
+			type: "Feature",
+			properties: {},
+			geometry: { type: "Point", coordinates: p },
+		}));
+
+		if (points.length === 2) {
+			features.push({
+				type: "Feature",
+				properties: {},
+				geometry: { type: "LineString", coordinates: points },
+			});
+		}
+
+		source.setData({ type: "FeatureCollection", features });
+	}
+
 	function handleSelectNote(note: TimelineNote) {
 		setSelectedNoteId(note.id);
 		if (note.places && mapRef.current) {
@@ -284,6 +311,22 @@ export default function AtlasMap() {
 		setRouteWaypoints([]);
 		setShowRouteForm(false);
 		updateRouteDrawPreview([]);
+	}
+
+	function startMeasuring() {
+		setMeasureMode(true);
+		setMeasurePoints([]);
+		setMeasureDistance(null);
+		setClickedCoords(null);
+		setSelectedPlace(null);
+		updateMeasurePreview([]);
+	}
+
+	function cancelMeasuring() {
+		setMeasureMode(false);
+		setMeasurePoints([]);
+		setMeasureDistance(null);
+		updateMeasurePreview([]);
 	}
 
 	function finishRouteDrawing() {
@@ -363,6 +406,7 @@ export default function AtlasMap() {
 
 		mapRef.current = new maplibregl.Map({
 			container: mapContainerRef.current,
+            projection: "globe",
 			style: {
 				version: 8,
 				sources: {
@@ -488,6 +532,24 @@ export default function AtlasMap() {
 				filter: ["==", ["geometry-type"], "Point"],
 				paint: { "circle-radius": 5, "circle-color": "#5B7C99" },
 			});
+			mapRef.current!.addSource("measure-preview", {
+				type: "geojson",
+				data: { type: "FeatureCollection", features: [] },
+			});
+			mapRef.current!.addLayer({
+				id: "measure-preview-line",
+				type: "line",
+				source: "measure-preview",
+				filter: ["==", ["geometry-type"], "LineString"],
+				paint: { "line-color": "#333", "line-width": 2 },
+			});
+			mapRef.current!.addLayer({
+				id: "measure-preview-points",
+				type: "circle",
+				source: "measure-preview",
+				filter: ["==", ["geometry-type"], "Point"],
+				paint: { "circle-radius": 5, "circle-color": "#333" },
+			});
 
 			loadPlaces();
 			loadNotes();
@@ -507,6 +569,26 @@ export default function AtlasMap() {
 		const map = mapRef.current;
 
 		function handleClick(e: maplibregl.MapMouseEvent) {
+			if (measureMode) {
+				const newPoints: [number, number][] = [
+					...measurePoints,
+					[e.lngLat.lng, e.lngLat.lat] as [number, number],
+				].slice(-2);
+				setMeasurePoints(newPoints);
+				updateMeasurePreview(newPoints);
+
+				if (newPoints.length === 2) {
+					const line = turf.lineString(newPoints);
+					const km = turf.length(line, { units: "kilometers" });
+					setMeasureDistance(
+						`${km.toFixed(1)} km (${(km * 0.621371).toFixed(1)} mi)`,
+					);
+				} else {
+					setMeasureDistance(null);
+				}
+				return;
+			}
+
 			if (routeDrawMode) {
 				const newWaypoints = [
 					...routeWaypoints,
@@ -545,7 +627,7 @@ export default function AtlasMap() {
 		return () => {
 			map.off("click", handleClick);
 		};
-	}, [drawMode, drawnPoints, routeDrawMode, routeWaypoints]);
+	}, [drawMode, drawnPoints, measureMode, measurePoints, routeDrawMode, routeWaypoints]);
 
 	useEffect(() => {
 		if (
@@ -596,13 +678,19 @@ export default function AtlasMap() {
 					<span style={{ color: "#888" }}> (negative = BC)</span>
 				</label>
 
-				{!drawMode && !routeDrawMode && (
+				{!drawMode && !routeDrawMode && !measureMode && (
+					<button onClick={startMeasuring} style={{ alignSelf: "flex-start" }}>
+						Measure distance
+					</button>
+				)}
+
+				{!drawMode && !routeDrawMode && !measureMode && (
 					<button onClick={startDrawing} style={{ alignSelf: "flex-start" }}>
 						Draw a territory
 					</button>
 				)}
 
-				{!drawMode && !routeDrawMode && (
+				{!drawMode && !routeDrawMode && !measureMode && (
 					<button onClick={startRouteDrawing} style={{ alignSelf: "flex-start" }}>
 						Draw a route
 					</button>
@@ -638,6 +726,16 @@ export default function AtlasMap() {
 
 				{routeFormMessage && (
 					<p style={{ color: "#0F6E56" }}>{routeFormMessage}</p>
+				)}
+
+				{measureMode && (
+					<div>
+						<p style={{ margin: "4px 0" }}>
+							Click two points to measure.
+							{measureDistance && <strong> {measureDistance}</strong>}
+						</p>
+						<button onClick={cancelMeasuring}>Done</button>
+					</div>
 				)}
 			</div>
 
