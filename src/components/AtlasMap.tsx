@@ -54,6 +54,11 @@ export default function AtlasMap() {
 	const [measureMode, setMeasureMode] = useState(false);
 	const [measurePoints, setMeasurePoints] = useState<[number, number][]>([]);
 	const [measureDistance, setMeasureDistance] = useState<string | null>(null);
+	const [measureAreaMode, setMeasureAreaMode] = useState(false);
+	const [measureAreaPoints, setMeasureAreaPoints] = useState<[number, number][]>(
+		[],
+	);
+	const [measureArea, setMeasureArea] = useState<string | null>(null);
 
 	function highlightMarker(placeId: string | null) {
 		markersRef.current.forEach((marker, id) => {
@@ -90,7 +95,7 @@ export default function AtlasMap() {
 
 			el.addEventListener("click", (e) => {
 				e.stopPropagation();
-				if (drawMode) return;
+				if (drawMode || measureMode || measureAreaMode) return;
 				setClickedCoords(null);
 				setSelectedPlace(place);
 
@@ -270,6 +275,37 @@ export default function AtlasMap() {
 		source.setData({ type: "FeatureCollection", features });
 	}
 
+	function updateMeasureAreaPreview(points: [number, number][]) {
+		const source = mapRef.current?.getSource("measure-area-preview") as
+			| maplibregl.GeoJSONSource
+			| undefined;
+		if (!source) return;
+
+		const features: GeoJSON.Feature[] = points.map((p) => ({
+			type: "Feature",
+			properties: {},
+			geometry: { type: "Point", coordinates: p },
+		}));
+
+		if (points.length > 1) {
+			features.push({
+				type: "Feature",
+				properties: {},
+				geometry: { type: "LineString", coordinates: points },
+			});
+		}
+
+		if (points.length > 2) {
+			features.push({
+				type: "Feature",
+				properties: {},
+				geometry: { type: "Polygon", coordinates: [[...points, points[0]]] },
+			});
+		}
+
+		source.setData({ type: "FeatureCollection", features });
+	}
+
 	function handleSelectNote(note: TimelineNote) {
 		setSelectedNoteId(note.id);
 		if (note.places && mapRef.current) {
@@ -327,6 +363,22 @@ export default function AtlasMap() {
 		setMeasurePoints([]);
 		setMeasureDistance(null);
 		updateMeasurePreview([]);
+	}
+
+	function startMeasuringArea() {
+		setMeasureAreaMode(true);
+		setMeasureAreaPoints([]);
+		setMeasureArea(null);
+		setClickedCoords(null);
+		setSelectedPlace(null);
+		updateMeasureAreaPreview([]);
+	}
+
+	function cancelMeasuringArea() {
+		setMeasureAreaMode(false);
+		setMeasureAreaPoints([]);
+		setMeasureArea(null);
+		updateMeasureAreaPreview([]);
 	}
 
 	function finishRouteDrawing() {
@@ -550,6 +602,31 @@ export default function AtlasMap() {
 				filter: ["==", ["geometry-type"], "Point"],
 				paint: { "circle-radius": 5, "circle-color": "#333" },
 			});
+			mapRef.current!.addSource("measure-area-preview", {
+				type: "geojson",
+				data: { type: "FeatureCollection", features: [] },
+			});
+			mapRef.current!.addLayer({
+				id: "measure-area-preview-fill",
+				type: "fill",
+				source: "measure-area-preview",
+				filter: ["==", ["geometry-type"], "Polygon"],
+				paint: { "fill-color": "#555", "fill-opacity": 0.2 },
+			});
+			mapRef.current!.addLayer({
+				id: "measure-area-preview-line",
+				type: "line",
+				source: "measure-area-preview",
+				filter: ["==", ["geometry-type"], "LineString"],
+				paint: { "line-color": "#333", "line-width": 2 },
+			});
+			mapRef.current!.addLayer({
+				id: "measure-area-preview-points",
+				type: "circle",
+				source: "measure-area-preview",
+				filter: ["==", ["geometry-type"], "Point"],
+				paint: { "circle-radius": 5, "circle-color": "#333" },
+			});
 
 			loadPlaces();
 			loadNotes();
@@ -569,6 +646,27 @@ export default function AtlasMap() {
 		const map = mapRef.current;
 
 		function handleClick(e: maplibregl.MapMouseEvent) {
+			if (measureAreaMode) {
+				const newPoints: [number, number][] = [
+					...measureAreaPoints,
+					[e.lngLat.lng, e.lngLat.lat] as [number, number],
+				];
+				setMeasureAreaPoints(newPoints);
+				updateMeasureAreaPreview(newPoints);
+
+				if (newPoints.length > 2) {
+					const polygon = turf.polygon([[...newPoints, newPoints[0]]]);
+					const sqMeters = turf.area(polygon);
+					const sqKm = sqMeters / 1_000_000;
+					setMeasureArea(
+						`${sqKm.toFixed(2)} km² (${(sqKm * 0.386102).toFixed(2)} mi²)`,
+					);
+				} else {
+					setMeasureArea(null);
+				}
+				return;
+			}
+
 			if (measureMode) {
 				const newPoints: [number, number][] = [
 					...measurePoints,
@@ -627,7 +725,16 @@ export default function AtlasMap() {
 		return () => {
 			map.off("click", handleClick);
 		};
-	}, [drawMode, drawnPoints, measureMode, measurePoints, routeDrawMode, routeWaypoints]);
+	}, [
+		drawMode,
+		drawnPoints,
+		measureAreaMode,
+		measureAreaPoints,
+		measureMode,
+		measurePoints,
+		routeDrawMode,
+		routeWaypoints,
+	]);
 
 	useEffect(() => {
 		if (
@@ -678,21 +785,27 @@ export default function AtlasMap() {
 					<span style={{ color: "#888" }}> (negative = BC)</span>
 				</label>
 
-				{!drawMode && !routeDrawMode && !measureMode && (
+				{!drawMode && !routeDrawMode && !measureMode && !measureAreaMode && (
 					<button onClick={startMeasuring} style={{ alignSelf: "flex-start" }}>
 						Measure distance
 					</button>
 				)}
 
-				{!drawMode && !routeDrawMode && !measureMode && (
+				{!drawMode && !routeDrawMode && !measureMode && !measureAreaMode && (
 					<button onClick={startDrawing} style={{ alignSelf: "flex-start" }}>
 						Draw a territory
 					</button>
 				)}
 
-				{!drawMode && !routeDrawMode && !measureMode && (
+				{!drawMode && !routeDrawMode && !measureMode && !measureAreaMode && (
 					<button onClick={startRouteDrawing} style={{ alignSelf: "flex-start" }}>
 						Draw a route
+					</button>
+				)}
+
+				{!drawMode && !routeDrawMode && !measureMode && !measureAreaMode && (
+					<button onClick={startMeasuringArea} style={{ alignSelf: "flex-start" }}>
+						Measure area
 					</button>
 				)}
 
@@ -735,6 +848,21 @@ export default function AtlasMap() {
 							{measureDistance && <strong> {measureDistance}</strong>}
 						</p>
 						<button onClick={cancelMeasuring}>Done</button>
+					</div>
+				)}
+
+				{measureAreaMode && (
+					<div>
+						<p style={{ margin: "4px 0" }}>
+							Click points to outline an area ({measureAreaPoints.length} so far).
+							{measureArea && (
+								<>
+									<br />
+									<strong>{measureArea}</strong>
+								</>
+							)}
+						</p>
+						<button onClick={cancelMeasuringArea}>Done</button>
 					</div>
 				)}
 			</div>
