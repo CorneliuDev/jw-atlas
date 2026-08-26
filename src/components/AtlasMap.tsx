@@ -1084,7 +1084,7 @@ export default function AtlasMap() {
 									alert("Link copied: " + url);
 								}}
 								style={{ marginTop: 4 }}
-							>
+							>   
 								Copy share link
 							</button>
 						</div>
