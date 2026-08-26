@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import * as maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import Timeline, { TimelineNote } from "./Timeline";
+import { createTerritory } from "@/app/territories/actions";
 
 const ESRI_HILLSHADE_URL =
   "https://services.arcgisonline.com/arcgis/rest/services/Elevation/World_Hillshade/MapServer/tile/{z}/{y}/{x}";
@@ -32,6 +33,11 @@ export default function AtlasMap() {
   const [selectedNoteId, setSelectedNoteId] = useState<string | null>(null);
 
   const [territoryYear, setTerritoryYear] = useState<number>(-1000);
+
+  const [drawMode, setDrawMode] = useState(false);
+  const [drawnPoints, setDrawnPoints] = useState<[number, number][]>([]);
+  const [showTerritoryForm, setShowTerritoryForm] = useState(false);
+  const [territoryFormMessage, setTerritoryFormMessage] = useState<string | null>(null);
 
   function highlightMarker(placeId: string | null) {
     markersRef.current.forEach((marker, id) => {
@@ -67,6 +73,7 @@ export default function AtlasMap() {
 
       el.addEventListener("click", (e) => {
         e.stopPropagation();
+        if (drawMode) return;
         setClickedCoords(null);
         setSelectedPlace(place);
 
@@ -107,6 +114,39 @@ export default function AtlasMap() {
     }
   }
 
+  function updateDrawPreview(points: [number, number][]) {
+    const source = mapRef.current?.getSource("draw-preview") as maplibregl.GeoJSONSource | undefined;
+    if (!source) return;
+
+    const features: GeoJSON.Feature[] = [];
+
+    points.forEach((p) => {
+      features.push({
+        type: "Feature",
+        properties: {},
+        geometry: { type: "Point", coordinates: p },
+      });
+    });
+
+    if (points.length > 1) {
+      features.push({
+        type: "Feature",
+        properties: {},
+        geometry: { type: "LineString", coordinates: points },
+      });
+    }
+
+    if (points.length > 2) {
+      features.push({
+        type: "Feature",
+        properties: {},
+        geometry: { type: "Polygon", coordinates: [[...points, points[0]]] },
+      });
+    }
+
+    source.setData({ type: "FeatureCollection", features });
+  }
+
   function handleSelectNote(note: TimelineNote) {
     setSelectedNoteId(note.id);
     if (note.places && mapRef.current) {
@@ -117,6 +157,51 @@ export default function AtlasMap() {
       });
       if (note.place_id) highlightMarker(note.place_id);
     }
+  }
+
+  function startDrawing() {
+    setDrawMode(true);
+    setDrawnPoints([]);
+    setClickedCoords(null);
+    setSelectedPlace(null);
+    updateDrawPreview([]);
+  }
+
+  function cancelDrawing() {
+    setDrawMode(false);
+    setDrawnPoints([]);
+    setShowTerritoryForm(false);
+    updateDrawPreview([]);
+  }
+
+  function finishDrawing() {
+    if (drawnPoints.length < 3) {
+      setTerritoryFormMessage("A territory needs at least 3 points.");
+      return;
+    }
+    setShowTerritoryForm(true);
+  }
+
+  async function handleTerritorySubmit(formData: FormData) {
+    const geometry = {
+      type: "Polygon",
+      coordinates: [[...drawnPoints, drawnPoints[0]]],
+    };
+    formData.set("geometry", JSON.stringify(geometry));
+
+    const result = await createTerritory(formData);
+
+    if (result.error) {
+      setTerritoryFormMessage(result.error);
+      return;
+    }
+
+    setTerritoryFormMessage(`Territory submitted! Status: ${result.status}`);
+    setDrawnPoints([]);
+    updateDrawPreview([]);
+    setShowTerritoryForm(false);
+    setDrawMode(false);
+    loadTerritories(territoryYear);
   }
 
   useEffect(() => {
@@ -156,15 +241,6 @@ export default function AtlasMap() {
 
     mapRef.current.addControl(new maplibregl.NavigationControl(), "top-right");
 
-    mapRef.current.on("click", (e) => {
-      const features = mapRef.current!.getLayer("territories-fill")
-        ? mapRef.current!.queryRenderedFeatures(e.point, { layers: ["territories-fill"] })
-        : [];
-      if (features.length > 0) return;
-      setSelectedPlace(null);
-      setClickedCoords({ lat: e.lngLat.lat, lng: e.lngLat.lng });
-    });
-
     mapRef.current.on("load", () => {
       mapRef.current!.addSource("territories", {
         type: "geojson",
@@ -183,6 +259,32 @@ export default function AtlasMap() {
         paint: { "line-color": "#8B5E34", "line-width": 1.5 },
       });
 
+      mapRef.current!.addSource("draw-preview", {
+        type: "geojson",
+        data: { type: "FeatureCollection", features: [] },
+      });
+      mapRef.current!.addLayer({
+        id: "draw-preview-fill",
+        type: "fill",
+        source: "draw-preview",
+        filter: ["==", ["geometry-type"], "Polygon"],
+        paint: { "fill-color": "#D85A30", "fill-opacity": 0.2 },
+      });
+      mapRef.current!.addLayer({
+        id: "draw-preview-line",
+        type: "line",
+        source: "draw-preview",
+        filter: ["==", ["geometry-type"], "LineString"],
+        paint: { "line-color": "#D85A30", "line-width": 2, "line-dasharray": [2, 2] },
+      });
+      mapRef.current!.addLayer({
+        id: "draw-preview-points",
+        type: "circle",
+        source: "draw-preview",
+        filter: ["==", ["geometry-type"], "Point"],
+        paint: { "circle-radius": 5, "circle-color": "#D85A30" },
+      });
+
       loadPlaces();
       loadNotes();
       loadTerritories(territoryYear);
@@ -196,9 +298,37 @@ export default function AtlasMap() {
   }, []);
 
   useEffect(() => {
+    if (!mapRef.current) return;
+    const map = mapRef.current;
+
+    function handleClick(e: maplibregl.MapMouseEvent) {
+      if (drawMode) {
+        const newPoints: [number, number][] = [...drawnPoints, [e.lngLat.lng, e.lngLat.lat]];
+        setDrawnPoints(newPoints);
+        updateDrawPreview(newPoints);
+        return;
+      }
+
+      const features = map.getLayer("territories-fill")
+        ? map.queryRenderedFeatures(e.point, { layers: ["territories-fill"] })
+        : [];
+      if (features.length > 0) return;
+
+      setSelectedPlace(null);
+      setClickedCoords({ lat: e.lngLat.lat, lng: e.lngLat.lng });
+    }
+
+    map.on("click", handleClick);
+    return () => {
+      map.off("click", handleClick);
+    };
+  }, [drawMode, drawnPoints]);
+
+  useEffect(() => {
     if (mapRef.current?.isStyleLoaded() && mapRef.current?.getSource("territories")) {
       loadTerritories(territoryYear);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [territoryYear]);
 
   const addPlaceHref = clickedCoords
@@ -221,6 +351,9 @@ export default function AtlasMap() {
           boxShadow: "0 1px 4px rgba(0,0,0,0.15)",
           fontFamily: "sans-serif",
           fontSize: 13,
+          display: "flex",
+          flexDirection: "column",
+          gap: 8,
         }}
       >
         <label>
@@ -233,7 +366,68 @@ export default function AtlasMap() {
           />
           <span style={{ color: "#888" }}> (negative = BC)</span>
         </label>
+
+        {!drawMode && (
+          <button onClick={startDrawing} style={{ alignSelf: "flex-start" }}>
+            Draw a territory
+          </button>
+        )}
+
+        {drawMode && !showTerritoryForm && (
+          <div>
+            <p style={{ margin: "4px 0" }}>
+              Click the map to add points ({drawnPoints.length} so far).
+            </p>
+            <button onClick={finishDrawing} disabled={drawnPoints.length < 3}>
+              Finish shape
+            </button>{" "}
+            <button onClick={cancelDrawing}>Cancel</button>
+          </div>
+        )}
+
+        {territoryFormMessage && <p style={{ color: "#0F6E56" }}>{territoryFormMessage}</p>}
       </div>
+
+      {showTerritoryForm && (
+        <div
+          style={{
+            position: "absolute",
+            top: 12,
+            right: 12,
+            width: 300,
+            background: "white",
+            padding: "1rem",
+            borderRadius: 8,
+            boxShadow: "0 1px 8px rgba(0,0,0,0.2)",
+            fontFamily: "sans-serif",
+            fontSize: 13,
+          }}
+        >
+          <h3 style={{ marginTop: 0 }}>New territory</h3>
+          <form action={handleTerritorySubmit} style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            <label>
+              Name
+              <input name="name" type="text" required style={{ width: "100%" }} />
+            </label>
+            <label>
+              Description
+              <textarea name="description" style={{ width: "100%" }} />
+            </label>
+            <label>
+              Start year (negative = BC)
+              <input name="dateSortStart" type="number" required style={{ width: "100%" }} />
+            </label>
+            <label>
+              End year (leave blank if still in effect)
+              <input name="dateSortEnd" type="number" style={{ width: "100%" }} />
+            </label>
+            <button type="submit">Submit territory</button>
+            <button type="button" onClick={cancelDrawing}>
+              Cancel
+            </button>
+          </form>
+        </div>
+      )}
 
       <Timeline
         notes={notes}
@@ -242,7 +436,7 @@ export default function AtlasMap() {
         onSelectNote={handleSelectNote}
       />
 
-      {(clickedCoords || selectedPlace) && (
+      {(clickedCoords || selectedPlace) && !drawMode && (
         <div
           style={{
             position: "absolute",
