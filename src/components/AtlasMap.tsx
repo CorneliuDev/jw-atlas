@@ -60,13 +60,14 @@ export default function AtlasMap() {
 	}
 
 	async function loadPlaces() {
-		const res = await fetch("/api/v1/places");
-		const { places } = (await res.json()) as { places: Place[] };
-
-		markersRef.current.forEach((m) => m.remove());
-		markersRef.current = new Map();
-
-		places.forEach((place) => {
+          const res = await fetch("/api/v1/places");
+          const body = (await res.json()) as { places?: Place[]; error?: string };
+          const places = body.places ?? [];
+            
+          markersRef.current.forEach((m) => m.remove());
+          markersRef.current = new Map();
+            
+          places.forEach((place) => {
 			const el = document.createElement("div");
 			el.style.width = "16px";
 			el.style.height = "16px";
