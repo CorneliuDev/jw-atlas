@@ -475,7 +475,6 @@ export default function AtlasMap() {
 
 		mapRef.current = new maplibregl.Map({
 			container: mapContainerRef.current,
-            projection: "globe",
 			style: {
 				version: 8,
 				sources: {

@@ -27,7 +27,11 @@ export default async function PersonDetailPage({
   return (
     <main style={{ padding: "2rem", fontFamily: "sans-serif", maxWidth: 600 }}>
       <h1>{person.name}</h1>
-      {person.tribes && <p style={{ color: "#666" }}>Tribe: {(person.tribes as { name: string }).name}</p>}
+      {person.tribes && (
+        <p style={{ color: "#666" }}>
+          Tribe: {(person.tribes as unknown as { name: string }[])[0]?.name}
+        </p>
+      )}
       {person.scripture_reference && <p style={{ color: "#666" }}>{person.scripture_reference}</p>}
       {person.description && <p>{person.description}</p>}
 
