@@ -1,5 +1,6 @@
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { notFound } from "next/navigation";
+import CommentThread from "@/components/CommentThread";
 
 export default async function PlaceSharePage({
 	params,
@@ -24,6 +25,11 @@ export default async function PlaceSharePage({
 			<p style={{ color: "#666" }}>Confidence: {place.confidence}</p>
 			{place.description && <p>{place.description}</p>}
 			<a href={`/?focusPlace=${place.id}`}>View on map</a>
+			<CommentThread
+				contentType="place"
+				contentId={place.id}
+				revalidatePathTarget={`/places/${place.id}`}
+			/>
 		</main>
 	);
 }
