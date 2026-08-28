@@ -14,6 +14,12 @@ export async function approveContent(contentType: ContentType, id: string) {
   }
 
   const supabase = await createSupabaseServerClient();
+  const { data: content } = await supabase
+  .from(contentType)
+  .select("*")
+  .eq("id", id)
+  .single();
+
   const { error } = await supabase
     .from(contentType)
     .update({ status: "approved" })
@@ -21,10 +27,15 @@ export async function approveContent(contentType: ContentType, id: string) {
 
   if (error) throw new Error(error.message);
 
-  // TODO (Step 9 follow-up / Phase 3 notifications): insert a row into
-  // `notifications` here so the submitter is told their content was
-  // approved, per spec §6.1 step 4. Deferred since `notifications` table
-  // doesn't exist yet (Phase 3 per spec §10) — flagging so it's not lost.
+  if (content) {
+    const label = content.name ?? content.title ?? "your submission";
+    await supabase.from("notifications").insert({
+      user_id: content.created_by,
+      type: "submission_approved",
+      message: `"${label}" was approved and is now live.`,
+    });
+  }
+
   revalidatePath("/admin/moderation");
 }
 
@@ -35,6 +46,12 @@ export async function rejectContent(contentType: ContentType, id: string, reason
   }
 
   const supabase = await createSupabaseServerClient();
+  const { data: content } = await supabase
+  .from(contentType)
+  .select("*")
+  .eq("id", id)
+  .single();
+
   const { error } = await supabase
     .from(contentType)
     .update({ status: "rejected" })
@@ -42,7 +59,15 @@ export async function rejectContent(contentType: ContentType, id: string, reason
 
   if (error) throw new Error(error.message);
 
-  // Same TODO as above — reason param is accepted now so the UI/API shape
-  // is ready, but isn't persisted anywhere until notifications exist.
+  if (content) {
+    const label = content.name ?? content.title ?? "your submission";
+    await supabase.from("notifications").insert({
+      user_id: content.created_by,
+      type: "submission_rejected",
+      message: `"${label}" was rejected.`,
+      reason: reason || null,
+    });
+  }
+
   revalidatePath("/admin/moderation");
 }

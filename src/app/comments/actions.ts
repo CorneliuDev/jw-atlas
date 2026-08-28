@@ -37,6 +37,22 @@ export async function addComment(
 
 	if (error) return { error: error.message };
 
+	if (parentCommentId) {
+		const { data: parent } = await supabase
+			.from("comments")
+			.select("user_id")
+			.eq("id", parentCommentId)
+			.single();
+
+		if (parent && parent.user_id !== user.id) {
+			await supabase.from("notifications").insert({
+				user_id: parent.user_id,
+				type: "comment_reply",
+				message: "Someone replied to your comment.",
+			});
+		}
+	}
+
 	revalidatePath(revalidatePathTarget);
 	return { success: true };
 }
