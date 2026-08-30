@@ -26,27 +26,10 @@ interface TimelineProps {
 
 export default function Timeline({ notes, loading, selectedNoteId, onSelectNote }: TimelineProps) {
   return (
-    <div
-      style={{
-        position: "absolute",
-        bottom: 0,
-        left: 0,
-        right: 0,
-        maxHeight: 160,
-        background: "white",
-        borderTop: "1px solid #ddd",
-        overflowX: "auto",
-        overflowY: "hidden",
-        display: "flex",
-        alignItems: "center",
-        gap: 12,
-        padding: "0.75rem 1rem",
-        fontFamily: "sans-serif",
-      }}
-    >
-      {loading && <span style={{ color: "#888" }}>Loading timeline...</span>}
+    <div className="absolute bottom-0 left-0 right-0 max-h-40 bg-white border-t border-gray-300 overflow-x-auto overflow-y-hidden flex items-center gap-3 px-4 py-3 font-sans">
+      {loading && <span className="text-gray-500">Loading timeline...</span>}
       {!loading && notes.length === 0 && (
-        <span style={{ color: "#888" }}>No approved notes yet.</span>
+        <span className="text-gray-500">No approved notes yet.</span>
       )}
       {notes.map((note) => {
         const isSelected = note.id === selectedNoteId;
@@ -55,22 +38,16 @@ export default function Timeline({ notes, loading, selectedNoteId, onSelectNote 
             key={note.id}
             id={`timeline-note-${note.id}`}
             onClick={() => onSelectNote(note)}
-            style={{
-              flexShrink: 0,
-              border: isSelected ? "2px solid #0F6E56" : "1px solid #ccc",
-              borderRadius: 6,
-              padding: "0.5rem 0.75rem",
-              background: isSelected ? "#E1F5EE" : "white",
-              cursor: "pointer",
-              textAlign: "left",
-              minWidth: 140,
-            }}
+            className={[
+              "shrink-0 rounded-md px-3 py-2 text-left min-w-[140px] cursor-pointer",
+              isSelected ? "border-2 border-[#0F6E56] bg-[#E1F5EE]" : "border border-gray-300 bg-white",
+            ].join(" ")}
           >
-            <div style={{ fontSize: 12, color: "#666" }}>
+            <div className="text-[12px] text-gray-600">
               {note.date_display ?? "Undated"}
               {note.approximate && " (approx.)"}
             </div>
-            <div style={{ fontSize: 14, fontWeight: 500 }}>{note.title}</div>
+            <div className="text-[14px] font-medium">{note.title}</div>
           </button>
         );
       })}

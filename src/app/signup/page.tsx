@@ -8,39 +8,42 @@ export default async function SignUpPage({
   const params = await searchParams;
 
   return (
-    <main style={{ padding: "2rem", fontFamily: "sans-serif", maxWidth: 400 }}>
-      <h1>Sign up</h1>
+    <main className="p-8 font-sans max-w-[400px] text-clay-900">
+      <h1 className="text-clay-900">Sign up</h1>
 
       {params.error && (
-        <p style={{ color: "red" }}>{decodeURIComponent(params.error)}</p>
+        <p className="text-red-600">{decodeURIComponent(params.error)}</p>
       )}
       {params.success && (
-        <p style={{ color: "green" }}>
+        <p className="text-green-600">
           Account created! Check your email to confirm, then{" "}
           <a href="/login">log in</a>.
         </p>
       )}
 
-      <form action={signUp} style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+      <form action={signUp} className="flex flex-col gap-3">
         <label>
           Display name
-          <input name="displayName" type="text" required style={{ width: "100%" }} />
+          <input name="displayName" type="text" required className="w-full" />
         </label>
         <label>
           Email
-          <input name="email" type="email" required style={{ width: "100%" }} />
+          <input name="email" type="email" required className="w-full" />
         </label>
         <label>
           Password
-          <input name="password" type="password" required minLength={6} style={{ width: "100%" }} />
+          <input name="password" type="password" required minLength={6} className="w-full" />
         </label>
-        <button type="submit">Create account</button>
+        <button type="submit" className="bg-clay-600 text-white rounded px-3 py-2">
+          Create account
+        </button>
       </form>
 
-      
-      <p style={{ margin: "1rem 0" }}>— or —</p>
+      <p className="my-4">— or —</p>
       <form action={signInWithGoogle}>
-        <button type="submit">Continue with Google</button>
+        <button type="submit" className="bg-white border border-gray-300 rounded px-3 py-2">
+          Continue with Google
+        </button>
       </form>
 
       <p>
