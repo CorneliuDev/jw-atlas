@@ -7,6 +7,7 @@ import * as maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import Timeline, { TimelineNote } from "./Timeline";
 import EraBand from "./EraBand";
+import NavBar from "./NavBar";
 import { addPlaceBookmark } from "@/app/bookmarks/actions";
 import { createTerritory } from "@/app/territories/actions";
 import { createRoute } from "@/app/routes/actions";
@@ -37,6 +38,11 @@ export default function AtlasMap() {
 		lng: number;
 	} | null>(null);
 	const [selectedPlace, setSelectedPlace] = useState<Place | null>(null);
+	const [currentUser, setCurrentUser] = useState<{
+		id: string;
+		role: string;
+		status: string;
+	} | null>(null);
 
 	const [notes, setNotes] = useState<TimelineNote[]>([]);
 	const [notesLoading, setNotesLoading] = useState(true);
@@ -659,6 +665,13 @@ export default function AtlasMap() {
 	}, []);
 
 	useEffect(() => {
+		fetch("/api/v1/me")
+			.then((res) => (res.ok ? res.json() : { user: null }))
+			.then((data) => setCurrentUser(data.user ?? null))
+			.catch(() => setCurrentUser(null));
+	}, []);
+
+	useEffect(() => {
 		if (!mapRef.current) return;
 		const map = mapRef.current;
 
@@ -771,6 +784,11 @@ export default function AtlasMap() {
 
 	return (
 		<div style={{ position: "relative", width: "100%", height: "100vh" }}>
+			<NavBar
+				isLoggedIn={!!currentUser}
+				isAdmin={currentUser?.role === "admin"}
+				unreadNotifications={0}
+			/>
 			<div ref={mapContainerRef} style={{ width: "100%", height: "100%" }} />
 
 			<div
@@ -888,7 +906,7 @@ export default function AtlasMap() {
 				<div
 					style={{
 						position: "absolute",
-						top: 12,
+						top: 64,
 						right: 12,
 						width: 300,
 						background: "white",
@@ -946,7 +964,7 @@ export default function AtlasMap() {
 				<div
 					style={{
 						position: "absolute",
-						top: 12,
+						top: 64,
 						right: 12,
 						width: 320,
 						maxHeight: "80vh",
@@ -1019,10 +1037,10 @@ export default function AtlasMap() {
 				<div
 					style={{
 						position: "absolute",
-						top: 0,
+						top: 64,
 						right: 0,
 						width: 340,
-						height: "100%",
+						height: "calc(100% - 64px)",
 						background: "white",
 						boxShadow: "-2px 0 8px rgba(0,0,0,0.15)",
 						padding: "1.5rem",
