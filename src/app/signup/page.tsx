@@ -8,7 +8,7 @@ export default async function SignUpPage({
   const params = await searchParams;
 
   return (
-    <main className="p-8 font-sans max-w-[400px] text-clay-900">
+    <main className="p-8 font-sans max-w-100 text-clay-900">
       <h1 className="text-clay-900">Sign up</h1>
 
       {params.error && (

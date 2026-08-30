@@ -7,6 +7,9 @@ interface NavBarProps {
   isLoggedIn: boolean;
   isAdmin: boolean;
   unreadNotifications: number;
+  onAddPlace: () => void;
+  onAddTerritory: () => void;
+  onAddRoute: () => void;
 }
 
 const circleButtonClass =
@@ -15,7 +18,13 @@ const circleButtonClass =
 const dropdownClass =
   "absolute top-12 bg-white rounded-lg shadow-lg p-3 font-sans text-sm text-clay-900";
 
-export default function NavBar({ isLoggedIn, unreadNotifications }: NavBarProps) {
+export default function NavBar({
+  isLoggedIn,
+  unreadNotifications,
+  onAddPlace,
+  onAddTerritory,
+  onAddRoute,
+}: NavBarProps) {
   const [searchOpen, setSearchOpen] = useState(false);
   const [addContentOpen, setAddContentOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
@@ -135,18 +144,39 @@ export default function NavBar({ isLoggedIn, unreadNotifications }: NavBarProps)
 
             {addContentOpen && (
               <div className={`${dropdownClass} right-0 w-44 flex flex-col p-1`}>
-                <a href="/places/new" className="px-2 py-1.5 rounded text-clay-900 hover:bg-clay-100 no-underline">
+                <button
+                  onClick={() => {
+                    setAddContentOpen(false);
+                    onAddPlace();
+                  }}
+                  className="px-2 py-1.5 rounded text-clay-900 hover:bg-clay-100 text-left"
+                  type="button"
+                >
                   Place
-                </a>
+                </button>
                 <a href="/notes/new" className="px-2 py-1.5 rounded text-clay-900 hover:bg-clay-100 no-underline">
                   Note
                 </a>
-                <a href="#" className="px-2 py-1.5 rounded text-clay-900 hover:bg-clay-100 no-underline">
+                <button
+                  onClick={() => {
+                    setAddContentOpen(false);
+                    onAddTerritory();
+                  }}
+                  className="px-2 py-1.5 rounded text-clay-900 hover:bg-clay-100 text-left"
+                  type="button"
+                >
                   Territory (draw on map)
-                </a>
-                <a href="#" className="px-2 py-1.5 rounded text-clay-900 hover:bg-clay-100 no-underline">
+                </button>
+                <button
+                  onClick={() => {
+                    setAddContentOpen(false);
+                    onAddRoute();
+                  }}
+                  className="px-2 py-1.5 rounded text-clay-900 hover:bg-clay-100 text-left"
+                  type="button"
+                >
                   Route (draw on map)
-                </a>
+                </button>
                 <a href="/people/new" className="px-2 py-1.5 rounded text-clay-900 hover:bg-clay-100 no-underline">
                   Person
                 </a>
