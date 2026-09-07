@@ -17,6 +17,9 @@ import { addPlaceBookmark } from "@/app/bookmarks/actions";
 import { createTerritory } from "@/app/territories/actions";
 import { createRoute } from "@/app/routes/actions";
 import { createPlacePanel } from "@/app/places/panel-actions";
+import { createNotePanel } from "@/app/notes/panel-actions";
+import { createTribePanel } from "@/app/tribes/panel-actions";
+import { createPersonPanel } from "@/app/people/panel-actions";
 
 const ESRI_HILLSHADE_URL =
   "https://services.arcgisonline.com/arcgis/rest/services/Elevation/World_Hillshade/MapServer/tile/{z}/{y}/{x}";
@@ -37,6 +40,27 @@ interface Tribe {
   name: string;
 }
 
+interface TerritoryDetail {
+  id: string;
+  name: string;
+  description: string | null;
+  scripture_reference: string | null;
+  date_sort_start: number;
+  date_sort_end: number | null;
+  created_by: string;
+}
+
+interface RouteDetail {
+  id: string;
+  name: string;
+  description: string | null;
+  scripture_reference: string | null;
+  date_sort_start: number | null;
+  date_sort_end: number | null;
+  created_by: string;
+  waypoints?: Array<{ latitude: number; longitude: number; date_display: string | null; date_sort_value: number | null }>;
+}
+
 // Single source of truth for "what's currently active" on the map/UI.
 // Opening any new panel clears whatever the previous one was doing.
 type ActivePanel =
@@ -44,8 +68,15 @@ type ActivePanel =
   | { kind: "place-detail"; place: Place }
   | { kind: "place-form-awaiting-location" }
   | { kind: "place-form"; lat: number; lng: number; preservedFields?: Record<string, string> }
+  | { kind: "note-form" }
+  | { kind: "tribe-form" }
+  | { kind: "person-form" }
+  | { kind: "territory-detail"; territory: TerritoryDetail }
+  | { kind: "territory-edit"; territory: TerritoryDetail }
   | { kind: "territory-draw" }
   | { kind: "territory-form" }
+  | { kind: "route-detail"; route: RouteDetail }
+  | { kind: "route-edit"; route: RouteDetail }
   | { kind: "route-draw" }
   | { kind: "route-form" }
   | { kind: "measure-distance" }
@@ -64,7 +95,15 @@ export default function AtlasMap() {
   const [editLng, setEditLng] = useState<number | null>(null);
   const [currentUser, setCurrentUser] = useState<{ id: string; role: string; status: string } | null>(null);
   const [tribes, setTribes] = useState<Tribe[]>([]);
+  const [notePlaces, setNotePlaces] = useState<{ id: string; name: string }[]>([]);
+  const [myPlaces, setMyPlaces] = useState<{ id: string; name: string }[]>([]);
+  const [myPeople, setMyPeople] = useState<{ id: string; name: string }[]>([]);
+  const [myTerritories, setMyTerritories] = useState<{ id: string; name: string }[]>([]);
+  const [myRoutes, setMyRoutes] = useState<{ id: string; name: string }[]>([]);
   const [placeFormMessage, setPlaceFormMessage] = useState<string | null>(null);
+  const [noteFormMessage, setNoteFormMessage] = useState<string | null>(null);
+  const [tribeFormMessage, setTribeFormMessage] = useState<string | null>(null);
+  const [personFormMessage, setPersonFormMessage] = useState<string | null>(null);
   const [preservedPlaceFields, setPreservedPlaceFields] = useState<Record<string, string> | null>(null);
   const placeFormRef = useRef<HTMLFormElement | null>(null);
 
@@ -108,6 +147,9 @@ export default function AtlasMap() {
     setMeasureAreaPoints([]);
     setMeasureArea(null);
     setPlaceFormMessage(null);
+    setNoteFormMessage(null);
+    setTribeFormMessage(null);
+    setPersonFormMessage(null);
     clearPreviewLayers();
     setActivePanel(next);
   }
@@ -186,6 +228,29 @@ export default function AtlasMap() {
     const res = await fetch("/api/v1/tribes");
     const data = await res.json();
     setTribes(data.tribes ?? []);
+  }
+
+  async function loadNotePlaces() {
+    const res = await fetch("/api/v1/places");
+    const data = await res.json();
+    setNotePlaces(data.places ?? []);
+  }
+
+  async function loadPersonFormPickerData() {
+    const [placesRes, peopleRes, territoriesRes, routesRes] = await Promise.all([
+      fetch("/api/v1/my-places"),
+      fetch("/api/v1/my-people"),
+      fetch("/api/v1/my-territories"),
+      fetch("/api/v1/my-routes"),
+    ]);
+    const placesData = await placesRes.json();
+    const peopleData = await peopleRes.json();
+    const territoriesData = await territoriesRes.json();
+    const routesData = await routesRes.json();
+    setMyPlaces(placesData.places ?? []);
+    setMyPeople(peopleData.people ?? []);
+    setMyTerritories(territoriesData.territories ?? []);
+    setMyRoutes(routesData.routes ?? []);
   }
 
   async function loadTerritories(year: number) {
@@ -299,6 +364,62 @@ export default function AtlasMap() {
     setTimeout(() => openPanel({ kind: "none" }), 1200);
   }
 
+  async function handleTerritoryEditSubmit(territoryId: string, formData: FormData) {
+    const { updateTerritoryPanel } = await import("@/app/territories/edit-panel-actions");
+    const result = await updateTerritoryPanel(territoryId, formData);
+    if ("error" in result && result.error) {
+      setTerritoryFormMessage(result.error);
+      return;
+    }
+    setTerritoryFormMessage(`Territory updated! ${result.published ? `Status: ${result.status}` : "Kept private."}`);
+    loadTerritories(territoryYear);
+    setTimeout(() => openPanel({ kind: "none" }), 1200);
+  }
+
+  async function handleRouteEditSubmit(routeId: string, formData: FormData) {
+    const { updateRoutePanel } = await import("@/app/routes/edit-panel-actions");
+    const result = await updateRoutePanel(routeId, formData);
+    if ("error" in result && result.error) {
+      setRouteFormMessage(result.error);
+      return;
+    }
+    setRouteFormMessage(`Route updated! ${result.published ? `Status: ${result.status}` : "Kept private."}`);
+    loadRoutes();
+    setTimeout(() => openPanel({ kind: "none" }), 1200);
+  }
+
+  async function handleNoteSubmit(formData: FormData) {
+    const result = await createNotePanel(formData);
+    if (result.error) {
+      setNoteFormMessage(result.error);
+      return;
+    }
+    setNoteFormMessage(`Note saved! ${result.published ? `Status: ${result.status}` : "Kept private."}`);
+    loadNotes();
+    setTimeout(() => openPanel({ kind: "none" }), 1200);
+  }
+
+  async function handleTribeSubmit(formData: FormData) {
+    const result = await createTribePanel(formData);
+    if (result.error) {
+      setTribeFormMessage(result.error);
+      return;
+    }
+    setTribeFormMessage(`Tribe saved! ${result.published ? `Status: ${result.status}` : "Kept private."}`);
+    loadTribes();
+    setTimeout(() => openPanel({ kind: "none" }), 1200);
+  }
+
+  async function handlePersonSubmit(formData: FormData) {
+    const result = await createPersonPanel(formData);
+    if (result.error) {
+      setPersonFormMessage(result.error);
+      return;
+    }
+    setPersonFormMessage(`Person saved! ${result.published ? `Status: ${result.status}` : "Kept private."}`);
+    setTimeout(() => openPanel({ kind: "none" }), 1200);
+  }
+
   async function handleTerritorySubmit(formData: FormData) {
     const geometry = { type: "Polygon", coordinates: [[...drawnPoints, drawnPoints[0]]] };
     formData.set("geometry", JSON.stringify(geometry));
@@ -315,13 +436,24 @@ export default function AtlasMap() {
   async function handleRouteSubmit(formData: FormData) {
     const name = formData.get("name") as string;
     const description = formData.get("description") as string;
+    const scriptureReference = formData.get("scriptureReference") as string;
+    const dateSortStart = formData.get("dateSortStart") ? parseInt(formData.get("dateSortStart") as string, 10) : null;
+    const dateSortEnd = formData.get("dateSortEnd") ? parseInt(formData.get("dateSortEnd") as string, 10) : null;
+    const publish = formData.get("publish") === "on";
+    const personIds = formData.getAll("personIds") as string[];
     const waypointsForSubmit = routeWaypoints.map((wp) => ({
       lat: wp.lat,
       lng: wp.lng,
       dateDisplay: wp.dateDisplay,
       dateSortValue: wp.dateSortValue ? parseInt(wp.dateSortValue, 10) : null,
     }));
-    const result = await createRoute(name, description, waypointsForSubmit);
+    const result = await createRoute(name, description, waypointsForSubmit, {
+      scriptureReference,
+      dateSortStart,
+      dateSortEnd,
+      personIds,
+      publish,
+    });
     if (result.error) {
       setRouteFormMessage(result.error);
       return;
@@ -447,6 +579,34 @@ export default function AtlasMap() {
         return;
       }
 
+      if (kind === "none") {
+        const territoryFeatures = map.getLayer("territories-fill") ? map.queryRenderedFeatures(e.point, { layers: ["territories-fill"] }) : [];
+        if (territoryFeatures.length > 0) {
+          const territoryId = territoryFeatures[0].properties?.id ?? territoryFeatures[0].id;
+          if (territoryId) {
+            fetch(`/api/v1/territories/${territoryId}`)
+              .then((res) => res.json())
+              .then((data) => {
+                if (data.territory) setActivePanel({ kind: "territory-detail", territory: data.territory });
+              });
+          }
+          return;
+        }
+
+        const routeFeatures = map.getLayer("routes-line") ? map.queryRenderedFeatures(e.point, { layers: ["routes-line", "routes-waypoints"] }) : [];
+        if (routeFeatures.length > 0) {
+          const routeId = routeFeatures[0].properties?.id ?? routeFeatures[0].id;
+          if (routeId) {
+            fetch(`/api/v1/routes/${routeId}`)
+              .then((res) => res.json())
+              .then((data) => {
+                if (data.route) setActivePanel({ kind: "route-detail", route: data.route });
+              });
+          }
+          return;
+        }
+      }
+
       if (kind === "measure-area") {
         const newPoints: [number, number][] = [...measureAreaPoints, [e.lngLat.lng, e.lngLat.lat]];
         setMeasureAreaPoints(newPoints);
@@ -551,6 +711,15 @@ export default function AtlasMap() {
         onAddPlace={() => openPanel({ kind: "place-form-awaiting-location" })}
         onAddTerritory={() => openPanel({ kind: "territory-draw" })}
         onAddRoute={() => openPanel({ kind: "route-draw" })}
+        onAddNote={() => {
+          loadNotePlaces();
+          openPanel({ kind: "note-form" });
+        }}
+        onAddTribe={() => openPanel({ kind: "tribe-form" })}
+        onAddPerson={() => {
+          loadPersonFormPickerData();
+          openPanel({ kind: "person-form" });
+        }}
       />
       <div ref={mapContainerRef} className="w-full h-full" />
 
@@ -637,6 +806,52 @@ export default function AtlasMap() {
         )}
       </div>
 
+      {panelKind === "territory-detail" && (
+        <SidePanel title={activePanel.territory.name} onClose={() => openPanel({ kind: "none" })}>
+          <div className="space-y-3">
+            {activePanel.territory.description && <MarkdownContent content={activePanel.territory.description} />}
+            {activePanel.territory.scripture_reference && (
+              <p className="text-sm text-clay-600">Scripture: {activePanel.territory.scripture_reference}</p>
+            )}
+            <p className="text-sm text-clay-600">
+              Date range: {activePanel.territory.date_sort_start} to {activePanel.territory.date_sort_end ?? "present"}
+            </p>
+            {currentUser && (currentUser.id === activePanel.territory.created_by || currentUser.role === "admin") && (
+              <button
+                type="button"
+                onClick={() => setActivePanel({ kind: "territory-edit", territory: activePanel.territory })}
+                className="bg-clay-100 text-clay-900 rounded px-3 py-1.5 text-sm"
+              >
+                Edit territory
+              </button>
+            )}
+          </div>
+        </SidePanel>
+      )}
+
+      {panelKind === "route-detail" && (
+        <SidePanel title={activePanel.route.name} onClose={() => openPanel({ kind: "none" })}>
+          <div className="space-y-3">
+            {activePanel.route.description && <MarkdownContent content={activePanel.route.description} />}
+            {activePanel.route.scripture_reference && (
+              <p className="text-sm text-clay-600">Scripture: {activePanel.route.scripture_reference}</p>
+            )}
+            <p className="text-sm text-clay-600">
+              Date range: {activePanel.route.date_sort_start ?? "—"} to {activePanel.route.date_sort_end ?? "—"}
+            </p>
+            {currentUser && (currentUser.id === activePanel.route.created_by || currentUser.role === "admin") && (
+              <button
+                type="button"
+                onClick={() => setActivePanel({ kind: "route-edit", route: activePanel.route })}
+                className="bg-clay-100 text-clay-900 rounded px-3 py-1.5 text-sm"
+              >
+                Edit route
+              </button>
+            )}
+          </div>
+        </SidePanel>
+      )}
+
       {panelKind === "territory-form" && (
         <SidePanel title="New territory" onClose={() => openPanel({ kind: "none" })}>
           <form action={handleTerritorySubmit} className="flex flex-col gap-3">
@@ -649,6 +864,10 @@ export default function AtlasMap() {
               <RichTextEditor name="description" />
             </label>
             <label>
+              Scripture reference
+              <input name="scriptureReference" type="text" className="w-full border border-clay-200 rounded px-2 py-1" />
+            </label>
+            <label>
               Start year (negative = BC)
               <input name="dateSortStart" type="number" required className="w-full border border-clay-200 rounded px-2 py-1" />
             </label>
@@ -656,12 +875,65 @@ export default function AtlasMap() {
               End year (leave blank if still in effect)
               <input name="dateSortEnd" type="number" className="w-full border border-clay-200 rounded px-2 py-1" />
             </label>
+            <fieldset className="border border-clay-100 rounded p-2">
+              <legend className="text-xs text-clay-600 px-1">Associated people</legend>
+              {myPeople.map((person) => (
+                <label key={person.id} className="block text-sm">
+                  <input type="checkbox" name="personIds" value={person.id} className="accent-clay-600" /> {person.name}
+                </label>
+              ))}
+              {myPeople.length === 0 && <p className="text-xs text-clay-600">None available yet.</p>}
+            </fieldset>
             <label className="flex items-center gap-2">
               <input type="checkbox" name="publish" className="accent-clay-600" />
               Publish (Submit for public review)
             </label>
             <button type="submit" className="bg-clay-600 text-white rounded px-3 py-2">
               Submit territory
+            </button>
+          </form>
+          {territoryFormMessage && <p className="text-green-700 mt-2">{territoryFormMessage}</p>}
+        </SidePanel>
+      )}
+
+      {panelKind === "territory-edit" && (
+        <SidePanel title={`Edit ${activePanel.territory.name}`} onClose={() => openPanel({ kind: "none" })}>
+          <form action={(formData) => handleTerritoryEditSubmit(activePanel.territory.id, formData)} className="flex flex-col gap-3">
+            <label>
+              Name
+              <input name="name" type="text" required defaultValue={activePanel.territory.name} className="w-full border border-clay-200 rounded px-2 py-1" />
+            </label>
+            <label>
+              Description
+              <RichTextEditor name="description" defaultValue={activePanel.territory.description ?? ""} />
+            </label>
+            <label>
+              Scripture reference
+              <input name="scriptureReference" type="text" defaultValue={activePanel.territory.scripture_reference ?? ""} className="w-full border border-clay-200 rounded px-2 py-1" />
+            </label>
+            <label>
+              Start year (negative = BC)
+              <input name="dateSortStart" type="number" required defaultValue={activePanel.territory.date_sort_start} className="w-full border border-clay-200 rounded px-2 py-1" />
+            </label>
+            <label>
+              End year (leave blank if still in effect)
+              <input name="dateSortEnd" type="number" defaultValue={activePanel.territory.date_sort_end ?? ""} className="w-full border border-clay-200 rounded px-2 py-1" />
+            </label>
+            <fieldset className="border border-clay-100 rounded p-2">
+              <legend className="text-xs text-clay-600 px-1">Associated people</legend>
+              {myPeople.map((person) => (
+                <label key={person.id} className="block text-sm">
+                  <input type="checkbox" name="personIds" value={person.id} className="accent-clay-600" /> {person.name}
+                </label>
+              ))}
+              {myPeople.length === 0 && <p className="text-xs text-clay-600">None available yet.</p>}
+            </fieldset>
+            <label className="flex items-center gap-2">
+              <input type="checkbox" name="publish" className="accent-clay-600" />
+              Publish (Submit for public review)
+            </label>
+            <button type="submit" className="bg-clay-600 text-white rounded px-3 py-2">
+              Save territory
             </button>
           </form>
           {territoryFormMessage && <p className="text-green-700 mt-2">{territoryFormMessage}</p>}
@@ -678,6 +950,18 @@ export default function AtlasMap() {
             <label>
               Description
               <RichTextEditor name="description" />
+            </label>
+            <label>
+              Scripture reference
+              <input name="scriptureReference" type="text" className="w-full border border-clay-200 rounded px-2 py-1" />
+            </label>
+            <label>
+              Start year (negative = BC)
+              <input name="dateSortStart" type="number" className="w-full border border-clay-200 rounded px-2 py-1" />
+            </label>
+            <label>
+              End year (leave blank if still in effect)
+              <input name="dateSortEnd" type="number" className="w-full border border-clay-200 rounded px-2 py-1" />
             </label>
             <div className="border-t border-clay-100 pt-2">
               <strong>Waypoints (in order)</strong>
@@ -703,12 +987,65 @@ export default function AtlasMap() {
                 </div>
               ))}
             </div>
+            <fieldset className="border border-clay-100 rounded p-2">
+              <legend className="text-xs text-clay-600 px-1">Associated people</legend>
+              {myPeople.map((person) => (
+                <label key={person.id} className="block text-sm">
+                  <input type="checkbox" name="personIds" value={person.id} className="accent-clay-600" /> {person.name}
+                </label>
+              ))}
+              {myPeople.length === 0 && <p className="text-xs text-clay-600">None available yet.</p>}
+            </fieldset>
             <label className="flex items-center gap-2">
               <input type="checkbox" name="publish" className="accent-clay-600" />
               Publish (Submit for public review)
             </label>
             <button type="submit" className="bg-clay-600 text-white rounded px-3 py-2">
               Submit route
+            </button>
+          </form>
+          {routeFormMessage && <p className="text-green-700 mt-2">{routeFormMessage}</p>}
+        </SidePanel>
+      )}
+
+      {panelKind === "route-edit" && (
+        <SidePanel title={`Edit ${activePanel.route.name}`} onClose={() => openPanel({ kind: "none" })}>
+          <form action={(formData) => handleRouteEditSubmit(activePanel.route.id, formData)} className="flex flex-col gap-3">
+            <label>
+              Name
+              <input name="name" type="text" required defaultValue={activePanel.route.name} className="w-full border border-clay-200 rounded px-2 py-1" />
+            </label>
+            <label>
+              Description
+              <RichTextEditor name="description" defaultValue={activePanel.route.description ?? ""} />
+            </label>
+            <label>
+              Scripture reference
+              <input name="scriptureReference" type="text" defaultValue={activePanel.route.scripture_reference ?? ""} className="w-full border border-clay-200 rounded px-2 py-1" />
+            </label>
+            <label>
+              Start year (negative = BC)
+              <input name="dateSortStart" type="number" defaultValue={activePanel.route.date_sort_start ?? ""} className="w-full border border-clay-200 rounded px-2 py-1" />
+            </label>
+            <label>
+              End year (leave blank if still in effect)
+              <input name="dateSortEnd" type="number" defaultValue={activePanel.route.date_sort_end ?? ""} className="w-full border border-clay-200 rounded px-2 py-1" />
+            </label>
+            <fieldset className="border border-clay-100 rounded p-2">
+              <legend className="text-xs text-clay-600 px-1">Associated people</legend>
+              {myPeople.map((person) => (
+                <label key={person.id} className="block text-sm">
+                  <input type="checkbox" name="personIds" value={person.id} className="accent-clay-600" /> {person.name}
+                </label>
+              ))}
+              {myPeople.length === 0 && <p className="text-xs text-clay-600">None available yet.</p>}
+            </fieldset>
+            <label className="flex items-center gap-2">
+              <input type="checkbox" name="publish" className="accent-clay-600" />
+              Publish (Submit for public review)
+            </label>
+            <button type="submit" className="bg-clay-600 text-white rounded px-3 py-2">
+              Save route
             </button>
           </form>
           {routeFormMessage && <p className="text-green-700 mt-2">{routeFormMessage}</p>}
@@ -851,6 +1188,142 @@ export default function AtlasMap() {
             </button>
           </form>
           {placeFormMessage && <p className="text-green-700 mt-2">{placeFormMessage}</p>}
+        </SidePanel>
+      )}
+
+      {panelKind === "note-form" && (
+        <SidePanel title="New note" onClose={() => openPanel({ kind: "none" })}>
+          <form action={handleNoteSubmit} className="flex flex-col gap-3">
+            <label>
+              Place (optional)
+              <select name="placeId" className="w-full border border-clay-200 rounded px-2 py-1">
+                <option value="">— none —</option>
+                {notePlaces.map((p) => (
+                  <option key={p.id} value={p.id}>{p.name}</option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Title
+              <input name="title" type="text" required className="w-full border border-clay-200 rounded px-2 py-1" />
+            </label>
+            <label>
+              Body
+              <RichTextEditor name="body" />
+            </label>
+            <label>
+              Date display text (e.g. "c. 1446 BC")
+              <input name="dateDisplay" type="text" className="w-full border border-clay-200 rounded px-2 py-1" />
+            </label>
+            <label>
+              Date sort value (negative = BC)
+              <input name="dateSortStart" type="number" className="w-full border border-clay-200 rounded px-2 py-1" />
+            </label>
+            <label className="flex items-center gap-2">
+              <input type="checkbox" name="approximate" className="accent-clay-600" />
+              Date is approximate
+            </label>
+            <label>
+              Scripture reference
+              <input name="scriptureReference" type="text" className="w-full border border-clay-200 rounded px-2 py-1" />
+            </label>
+            <label className="flex items-center gap-2">
+              <input type="checkbox" name="publish" className="accent-clay-600" />
+              Publish (Submit for public review)
+            </label>
+            <button type="submit" className="bg-clay-600 text-white rounded px-3 py-2">Save note</button>
+          </form>
+          {noteFormMessage && <p className="text-green-700 mt-2">{noteFormMessage}</p>}
+        </SidePanel>
+      )}
+
+      {panelKind === "tribe-form" && (
+        <SidePanel title="New tribe / nation" onClose={() => openPanel({ kind: "none" })}>
+          <form action={handleTribeSubmit} className="flex flex-col gap-3">
+            <label>
+              Name
+              <input name="name" type="text" required className="w-full border border-clay-200 rounded px-2 py-1" />
+            </label>
+            <label>
+              Description
+              <RichTextEditor name="description" />
+            </label>
+            <label className="flex items-center gap-2">
+              <input type="checkbox" name="publish" className="accent-clay-600" />
+              Publish (Submit for public review)
+            </label>
+            <button type="submit" className="bg-clay-600 text-white rounded px-3 py-2">Save tribe</button>
+          </form>
+          {tribeFormMessage && <p className="text-green-700 mt-2">{tribeFormMessage}</p>}
+        </SidePanel>
+      )}
+
+      {panelKind === "person-form" && (
+        <SidePanel title="New person" onClose={() => openPanel({ kind: "none" })}>
+          <form action={handlePersonSubmit} className="flex flex-col gap-3">
+            <label>
+              Name
+              <input name="name" type="text" required className="w-full border border-clay-200 rounded px-2 py-1" />
+            </label>
+            <label>
+              Description
+              <RichTextEditor name="description" />
+            </label>
+            <label>
+              Birth year (negative = BC)
+              <input name="birthDateSort" type="number" className="w-full border border-clay-200 rounded px-2 py-1" />
+            </label>
+            <label>
+              Death year (negative = BC)
+              <input name="deathDateSort" type="number" className="w-full border border-clay-200 rounded px-2 py-1" />
+            </label>
+            <label>
+              Tribe / nation
+              <select name="tribeId" className="w-full border border-clay-200 rounded px-2 py-1">
+                <option value="">— none —</option>
+                {tribes.map((t) => (
+                  <option key={t.id} value={t.id}>{t.name}</option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Scripture reference
+              <input name="scriptureReference" type="text" className="w-full border border-clay-200 rounded px-2 py-1" />
+            </label>
+            <fieldset className="border border-clay-100 rounded p-2">
+              <legend className="text-xs text-clay-600 px-1">Associated places</legend>
+              {myPlaces.map((p) => (
+                <label key={p.id} className="block text-sm">
+                  <input type="checkbox" name="placeIds" value={p.id} className="accent-clay-600" /> {p.name}
+                </label>
+              ))}
+              {myPlaces.length === 0 && <p className="text-xs text-clay-600">None available yet.</p>}
+            </fieldset>
+            <fieldset className="border border-clay-100 rounded p-2">
+              <legend className="text-xs text-clay-600 px-1">Associated territories</legend>
+              {myTerritories.map((t) => (
+                <label key={t.id} className="block text-sm">
+                  <input type="checkbox" name="territoryIds" value={t.id} className="accent-clay-600" /> {t.name}
+                </label>
+              ))}
+              {myTerritories.length === 0 && <p className="text-xs text-clay-600">None available yet.</p>}
+            </fieldset>
+            <fieldset className="border border-clay-100 rounded p-2">
+              <legend className="text-xs text-clay-600 px-1">Associated routes</legend>
+              {myRoutes.map((r) => (
+                <label key={r.id} className="block text-sm">
+                  <input type="checkbox" name="routeIds" value={r.id} className="accent-clay-600" /> {r.name}
+                </label>
+              ))}
+              {myRoutes.length === 0 && <p className="text-xs text-clay-600">None available yet.</p>}
+            </fieldset>
+            <label className="flex items-center gap-2">
+              <input type="checkbox" name="publish" className="accent-clay-600" />
+              Publish (Submit for public review)
+            </label>
+            <button type="submit" className="bg-clay-600 text-white rounded px-3 py-2">Save person</button>
+          </form>
+          {personFormMessage && <p className="text-green-700 mt-2">{personFormMessage}</p>}
         </SidePanel>
       )}
 

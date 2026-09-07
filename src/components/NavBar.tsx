@@ -10,6 +10,9 @@ interface NavBarProps {
   onAddPlace: () => void;
   onAddTerritory: () => void;
   onAddRoute: () => void;
+  onAddNote: () => void;
+  onAddTribe: () => void;
+  onAddPerson: () => void;
 }
 
 const circleButtonClass =
@@ -24,6 +27,9 @@ export default function NavBar({
   onAddPlace,
   onAddTerritory,
   onAddRoute,
+  onAddNote,
+  onAddTribe,
+  onAddPerson,
 }: NavBarProps) {
   const [searchOpen, setSearchOpen] = useState(false);
   const [addContentOpen, setAddContentOpen] = useState(false);
@@ -154,9 +160,16 @@ export default function NavBar({
                 >
                   Place
                 </button>
-                <a href="/notes/new" className="px-2 py-1.5 rounded text-clay-900 hover:bg-clay-100 no-underline">
+                <button
+                  onClick={() => {
+                    setAddContentOpen(false);
+                    onAddNote();
+                  }}
+                  className="px-2 py-1.5 rounded text-clay-900 hover:bg-clay-100 text-left"
+                  type="button"
+                >
                   Note
-                </a>
+                </button>
                 <button
                   onClick={() => {
                     setAddContentOpen(false);
@@ -177,12 +190,26 @@ export default function NavBar({
                 >
                   Route (draw on map)
                 </button>
-                <a href="/people/new" className="px-2 py-1.5 rounded text-clay-900 hover:bg-clay-100 no-underline">
+                <button
+                  onClick={() => {
+                    setAddContentOpen(false);
+                    onAddPerson();
+                  }}
+                  className="px-2 py-1.5 rounded text-clay-900 hover:bg-clay-100 text-left"
+                  type="button"
+                >
                   Person
-                </a>
-                <a href="/tribes/new" className="px-2 py-1.5 rounded text-clay-900 hover:bg-clay-100 no-underline">
+                </button>
+                <button
+                  onClick={() => {
+                    setAddContentOpen(false);
+                    onAddTribe();
+                  }}
+                  className="px-2 py-1.5 rounded text-clay-900 hover:bg-clay-100 text-left"
+                  type="button"
+                >
                   Tribe
-                </a>
+                </button>
               </div>
             )}
           </div>

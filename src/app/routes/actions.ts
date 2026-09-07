@@ -14,7 +14,14 @@ interface WaypointInput {
 export async function createRoute(
   name: string,
   description: string,
-  waypoints: WaypointInput[]
+  waypoints: WaypointInput[],
+  extra?: {
+    scriptureReference?: string;
+    dateSortStart?: number | null;
+    dateSortEnd?: number | null;
+    personIds?: string[];
+    publish?: boolean;
+  }
 ) {
   const user = await getCurrentAppUser();
   const permission = canCreateContent(user);
@@ -34,7 +41,11 @@ export async function createRoute(
     .insert({
       name,
       description: description || null,
+      scripture_reference: extra?.scriptureReference || null,
+      date_sort_start: extra?.dateSortStart ?? null,
+      date_sort_end: extra?.dateSortEnd ?? null,
       status: permission.initialStatus,
+      visibility: extra?.publish ? "public" : "private",
       created_by: user!.id,
     })
     .select("id")
@@ -61,5 +72,11 @@ export async function createRoute(
     return { error: waypointsError.message };
   }
 
-  return { success: true, status: permission.initialStatus };
+  if ((extra?.personIds ?? []).length > 0) {
+    await supabase.from("person_routes").insert(
+      (extra?.personIds ?? []).map((personId) => ({ person_id: personId, route_id: route.id }))
+    );
+  }
+
+  return { success: true, status: permission.initialStatus, published: !!extra?.publish };
 }
